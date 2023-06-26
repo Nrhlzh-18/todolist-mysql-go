@@ -2,10 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"html/template"
 	"io"
 	"net/http"
-	"path"
 	"strconv"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -25,23 +23,9 @@ type TodoItemModel struct {
 }
 
 func Healthz(w http.ResponseWriter, r *http.Request) {
-
-	var filepath = path.Join("view", "index.html")
-	var tmpl, err = template.ParseFiles(filepath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	var data = map[string]interface{}{
-		"title": "Learning Golang Web",
-		"name":  "Batman",
-	}
-
-	err = tmpl.Execute(w, data)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	log.Info("API Health is OK")
+	w.Header().Set("Content-Type", "application/json")
+	io.WriteString(w, `{"alive": true}`)
 }
 
 func init() {
@@ -54,7 +38,10 @@ func CreateItem(w http.ResponseWriter, r *http.Request) {
 	log.WithFields(log.Fields{"description": description}).Info("Add new TodoItem. Saving to database.")
 	todo := &TodoItemModel{Deskripsi: description, Completed: false}
 	db.Create(&todo)
-	return
+	result := db.Last(&todo)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result.Value)
+
 }
 
 func UpdateItem(w http.ResponseWriter, r *http.Request) {
@@ -110,16 +97,17 @@ func GetItemByID(id int) bool {
 }
 
 func GetCompletedItems(w http.ResponseWriter, r *http.Request) {
-	log.Info("get completed TodoItems")
+	log.Info("Get completed TodoItems")
 	completedTodoItems := GetTodoItems(true)
-	w.Header().Set("Content-type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(completedTodoItems)
 }
 
-func GetIncompleteditems(w http.ResponseWriter, r *http.Request) {
-	log.Info("get incompleted TodoItems")
-	incompletedTodoItems := GetTodoItems(false)
-	json.NewEncoder(w).Encode(incompletedTodoItems)
+func GetIncompleteItems(w http.ResponseWriter, r *http.Request) {
+	log.Info("Get Incomplete TodoItems")
+	IncompleteTodoItems := GetTodoItems(false)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(IncompleteTodoItems)
 }
 
 func GetTodoItems(completed bool) interface{} {
@@ -138,13 +126,13 @@ func main() {
 	router := mux.NewRouter()
 	router.HandleFunc("/", Healthz).Methods("GET")
 	router.HandleFunc("/todo-completed", GetCompletedItems).Methods("GET")
-	router.HandleFunc("/todo-incompleted", GetIncompleteditems).Methods("GET")
+	router.HandleFunc("/todo-incompleted", GetIncompleteItems).Methods("GET")
 	router.HandleFunc("/todo", CreateItem).Methods("POST")
-	router.HandleFunc("/todo/:id", UpdateItem).Methods("PUT")
-	router.HandleFunc("/todo/:id", DeleteItem).Methods("DELET")
+	router.HandleFunc("/todo/{id}", UpdateItem).Methods("POST")
+	router.HandleFunc("/todo/{id}", DeleteItem).Methods("DELETE")
 
 	handler := cors.New(cors.Options{
-		AllowedOrigins: []string{"GET", "POST", "DELETE", "PATCH", "OPTIONS"},
+		AllowedMethods: []string{"GET", "POST", "DELETE", "PATCH", "OPTIONS", "PUT"},
 	}).Handler(router)
 
 	http.ListenAndServe(":8000", handler)
